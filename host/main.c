@@ -50,7 +50,9 @@ int main(int argc, char *argv[])
    /* Buffer */
    char plaintext[MAX_LEN] = {0, };
    char ciphertext[MAX_LEN] = {0, };
+   int encKey;
 
+   /* File Pointer */
    FILE* fp;
 
    /* Initialize a context connecting us to the TEE */
@@ -77,9 +79,9 @@ int main(int argc, char *argv[])
    }
 
    /* Encrypt */
-   if(strcmp(argv[1], "-e") == 0){
+   if (strcmp(argv[1], "-e") == 0){
  
-	/* Func(1): open, read plaintext */	
+	/* Func(1): open, read plaintext file */	
 	fp = fopen(argv[2], "r");
 
 	if(fp == NULL){
@@ -93,9 +95,9 @@ int main(int argc, char *argv[])
 	printf("------------------------Plaintext-------------------------\n%s\n", plaintext);
 
 	/* Caesar */
-	if(strcmp(argv[3], "Caesar") == 0){
+	if (strcmp(argv[3], "Caesar") == 0){
 
-		/* Func(2): send plaintext to TA*/
+		/* Func(2): send plaintext file */
 		memcpy(op.params[0].tmpref.buffer, plaintext, MAX_LEN);
 		op.params[0].tmpref.size = MAX_LEN;
 		
@@ -104,16 +106,16 @@ int main(int argc, char *argv[])
 		if (res != TEEC_SUCCESS)
 			errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
 
-		/* Func(3): receive ciphertext, enc_key from TA*/
+		/* Func(3): receive ciphertext, enc_key file */
 		memcpy(ciphertext, op.params[0].tmpref.buffer, MAX_LEN);
-		printf("------------------------Cyphertext-------------------------\n%s\n", ciphertext);
+		printf("------------------------Ciphertext------------------------\n%s\n", ciphertext);
 
-		/* Func(4): save ciphertext.txt */
+		/* Func(4): save ciphertext.txt file */
                 fp = fopen("ciphertext.txt", "w");
 		fputs(ciphertext, fp); 
 		fclose(fp);
 
-		/* Func(5): save enckey.txt */
+		/* Func(5): save enckey.txt file */
 		fp = fopen("encryptedkey.txt", "w");
 		int enc_key = op.params[1].value.a;
 		fprintf(fp, "%d", enc_key);
@@ -130,8 +132,50 @@ int main(int argc, char *argv[])
 	}
    }
    /* Decrypt */
-   else if(strcmp(argv[1], "-d") == 0){ 
+   else if (strcmp(argv[1], "-d") == 0){ 
 
+        /* Func(1): open, read ciphertext file */
+	fp = fopen(argv[2], "r");
+		
+	if (fp == NULL){
+		perror("Ciphertext file not found");
+		return 1;
+	}
+
+	fread(ciphertext, 1, MAX_LEN, fp);
+	fclose(fp);
+
+	printf("\n========================Decryption========================\n");
+	printf("------------------------Ciphertext------------------------\n%s\n", ciphertext);
+
+	/* Func(2): open, read enc_key file */
+	fp = fopen(argv[3], "r");
+		
+	if (fp == NULL){
+		perror("Encryptedkey file not found");
+		return 1;
+	}
+
+	fscanf(fp, "%d", &encKey);
+	fclose(fp);
+        
+	/* Func(3): send ciphertext, enc_key file */
+	memcpy(op.params[0].tmpref.buffer, ciphertext, MAX_LEN);
+	op.params[1].value.a = encKey;
+
+	res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_CMD_DEC, &op, &err_origin);
+
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
+	
+	/* Func(4): receive plaintext file */
+	memcpy(plaintext, op.params[0].tmpref.buffer, MAX_LEN);
+	printf("------------------------Plaintext-------------------------\n%s\n", plaintext);
+
+	/* Func(5): save plaintext.txt file */
+	fp = fopen("plaintext.txt", "w");
+	fputs(plaintext, fp);
+	fclose(fp);
    }
    /* Error */
    else{

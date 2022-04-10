@@ -82,7 +82,7 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 	 * The DMSG() macro is non-standard, TEE Internal API doesn't
 	 * specify any means to logging from a TA.
 	 */
-	IMSG("!!!TEE encryption start!!!\n");
+	IMSG("*****************************Open Session*****************************\n");
 
 	/* If return value != TEE_SUCCESS the session will not be created. */
 	return TEE_SUCCESS;
@@ -95,7 +95,7 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
 {
 	(void)&sess_ctx; /* Unused parameter */
-	IMSG("Goodbye!\n");
+	IMSG("*****************************Close Session****************************\n");
 }
 
 static TEE_Result encrypt(uint32_t param_types,
@@ -112,14 +112,13 @@ static TEE_Result encrypt(uint32_t param_types,
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	/* Func(1): generate random key */
-	unsigned int randomKey;
+	int randomKey = 0;
 
-	randomKey %= 100;
 	while(randomKey % 26 == 0){
 		TEE_GenerateRandom(&randomKey, sizeof(randomKey));
 		randomKey %= 26;
 	}
-	randomKey %= 26;
+
 	DMSG("randomKey: %d", randomKey);
 
 	/* Func(2): encrypt plaintext */
@@ -131,8 +130,8 @@ static TEE_Result encrypt(uint32_t param_types,
         DMSG("------------------------Plaintext-------------------------\n%s\n", in);
 	memcpy(encrypted, in, in_len);
 
-	for(int i = 0; i < in_len; i++){
-		if(encrypted[i] >= 'a' && encrypted[i] <= 'z'){
+	for (int i = 0; i < in_len; i++){
+		if (encrypted[i] >= 'a' && encrypted[i] <= 'z'){
 			encrypted[i] -= 'a';
 			encrypted[i] += randomKey;
 			encrypted[i] = encrypted[i] % 26;
@@ -145,7 +144,7 @@ static TEE_Result encrypt(uint32_t param_types,
 			encrypted[i] += 'A';
 		}
 	}
-	DMSG("------------------------Cyphertext-------------------------\n%s\n", encrypted);
+	DMSG("------------------------Cyphertext------------------------\n%s\n", encrypted);
 	memcpy(in, encrypted, in_len);
 
 	/* Func(3): encrypt randomkey */
@@ -153,15 +152,14 @@ static TEE_Result encrypt(uint32_t param_types,
 	params[1].value.a = encKey;
 	DMSG("encKey: %d\n", encKey);
 
-
 	return TEE_SUCCESS;
 }
 
-static TEE_Result dec_value(uint32_t param_types,
+static TEE_Result decrypt(uint32_t param_types,
 	TEE_Param params[4])
 {
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
-						   TEE_PARAM_TYPE_NONE,
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_OUTPUT,
+						   TEE_PARAM_TYPE_VALUE_INOUT,
 						   TEE_PARAM_TYPE_NONE,
 						   TEE_PARAM_TYPE_NONE);
 
@@ -170,12 +168,41 @@ static TEE_Result dec_value(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	IMSG("Got value: %u from NW", params[0].value.a);
-	params[0].value.a--;
-	IMSG("Decrease value to: %u", params[0].value.a);
-
+	/* Func(1): decrypt encKey */
+	int encKey = params[1].value.a;
+	int randomKey = encKey - rootKey;
+	
+	/* Func(2): decrypt ciphtertext */
+	char * in = (char *)params[0].memref.buffer;
+	int in_len = strlen (params[0].memref.buffer);
+	char decrypted [MAX_LEN] = {0, };
+	
+	DMSG("========================Decryption========================\n");
+	DMSG("------------------------Cyphertext------------------------\n%s\n", in);
+	memcpy(decrypted, in, in_len);
+	
+	for (int i = 0; i < in_len; i++){
+		if (decrypted[i] >= 'a' && decrypted[i] <= 'z'){
+			decrypted[i] -= 'a';
+			decrypted[i] -= randomKey;
+			decrypted[i] += 26;
+			decrypted[i] = decrypted[i] % 26;
+			decrypted[i] += 'a';
+		}
+		else if (decrypted[i] >= 'A' && decrypted[i] <= 'Z') {
+			decrypted[i] -= 'A';
+			decrypted[i] -= randomKey;
+			decrypted[i] += 26;
+			decrypted[i] = decrypted[i] % 26;
+			decrypted[i] += 'A';
+		}
+	}
+	DMSG("------------------------Plaintext-------------------------\n%s\n", decrypted);
+	memcpy(in, decrypted, in_len);
+	
 	return TEE_SUCCESS;
 }
+
 /*
  * Called when a TA is invoked. sess_ctx hold that value that was
  * assigned by TA_OpenSessionEntryPoint(). The rest of the paramters
@@ -191,7 +218,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	case TA_TEEencrypt_CMD_ENC:
 		return encrypt(param_types, params);
 	case TA_TEEencrypt_CMD_DEC:
-		return dec_value(param_types, params);
+		return decrypt(param_types, params);
 	default:
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
