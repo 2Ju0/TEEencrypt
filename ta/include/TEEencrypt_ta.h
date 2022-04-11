@@ -39,5 +39,7 @@
 /* The function IDs implemented in this TA */
 #define TA_TEEencrypt_CMD_ENC		        0
 #define TA_TEEencrypt_CMD_DEC     		1
+#define TA_TEEencrypt_RSA_CMD_GENKEYS		2
+#define TA_TEEencrypt_RSA_CMD_ENC		3
 
 #endif /*TA_TEEencrypt _H*/ 

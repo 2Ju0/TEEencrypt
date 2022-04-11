@@ -37,6 +37,9 @@
 #include <unistd.h>
 
 #define MAX_LEN 100
+#define RSA_KEY_SIZE 1024
+#define RSA_MAX_PLAIN_LEN_1024 86 // (1024/8) - 42 (padding)
+#define RSA_CIPHER_LEN_1024 (RSA_KEY_SIZE / 8)
 
 int main(int argc, char *argv[])
 {
@@ -50,6 +53,8 @@ int main(int argc, char *argv[])
    /* Buffer */
    char plaintext[MAX_LEN] = {0, };
    char ciphertext[MAX_LEN] = {0, };
+   char clear[RSA_MAX_PLAIN_LEN_1024];
+   char ciph[RSA_CIPHER_LEN_1024];
    int encKey;
 
    /* File Pointer */
@@ -68,9 +73,10 @@ int main(int argc, char *argv[])
    /* Clear the TEEC_Operation struct */
    memset(&op, 0, sizeof(op));
    
-   op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_OUTPUT, TEEC_VALUE_INOUT, TEEC_NONE, TEEC_NONE);
-   op.params[0].tmpref.buffer = plaintext;
-   op.params[0].tmpref.size = MAX_LEN;
+   op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_OUTPUT,		// Caesar 
+					 TEEC_VALUE_INOUT,		// Caesar 
+					 TEEC_MEMREF_TEMP_INPUT, 	// RSA
+					 TEEC_MEMREF_TEMP_OUTPUT);	// RSA
 
    /* Check options */
    if (argc != 4){
@@ -97,10 +103,11 @@ int main(int argc, char *argv[])
 	/* Caesar */
 	if (strcmp(argv[3], "Caesar") == 0){
 
+   		op.params[0].tmpref.buffer = plaintext;
+   		op.params[0].tmpref.size = MAX_LEN;
+
 		/* Func(2): send plaintext file */
 		memcpy(op.params[0].tmpref.buffer, plaintext, MAX_LEN);
-		op.params[0].tmpref.size = MAX_LEN;
-		
 		res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_CMD_ENC, &op, &err_origin);
 
 		if (res != TEEC_SUCCESS)
@@ -110,20 +117,46 @@ int main(int argc, char *argv[])
 		memcpy(ciphertext, op.params[0].tmpref.buffer, MAX_LEN);
 		printf("------------------------Ciphertext------------------------\n%s\n", ciphertext);
 
-		/* Func(4): save ciphertext.txt file */
-                fp = fopen("ciphertext.txt", "w");
+		/* Func(4): save cipher.txt file */
+                fp = fopen("cipher.txt", "w");
 		fputs(ciphertext, fp); 
 		fclose(fp);
 
 		/* Func(5): save enckey.txt file */
-		fp = fopen("encryptedkey.txt", "w");
+		fp = fopen("enckey.txt", "w");
 		int enc_key = op.params[1].value.a;
 		fprintf(fp, "%d", enc_key);
 		fclose(fp);
 	}
 	/* RSA */
 	else if(strcmp(argv[3], "RSA") == 0){
-		return 1;
+		op.params[2].tmpref.buffer = clear;
+		op.params[2].tmpref.size = RSA_MAX_PLAIN_LEN_1024;
+		op.params[3].tmpref.buffer = ciph;
+		op.params[3].tmpref.size = RSA_CIPHER_LEN_1024;
+		
+		/* Func(2): generate key */
+		res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_RSA_CMD_GENKEYS, &op, &err_origin);
+		if (res != TEEC_SUCCESS)
+			errx(1, "\nTEEC_InvokeCommand failed %#x\n", res);
+
+		printf("-------------------Keys already generated-----------------\n");
+		
+		/* Func(3): send plaintext file */	
+		memcpy(op.params[2].tmpref.buffer, plaintext, RSA_MAX_PLAIN_LEN_1024);
+		res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_RSA_CMD_ENC, &op, &err_origin);
+		
+		if(res != TEEC_SUCCESS)
+			errx(1, "\nTEEC_InvokeCommand failed 0x%x origin 0x%x\n", res, err_origin);
+
+		/* Func(4): receive ciphertext, enc_key file */
+		memcpy(ciph, op.params[3].tmpref.buffer, MAX_LEN);
+		printf("------------------------Ciphertext------------------------\n%s\n", ciph);
+
+		/* Func(5): save cipher_RSA.txt file */
+		fp = fopen("cipher_RSA.txt", "w");
+		fputs(ciph, fp);
+		fclose(fp);
 	}
 	/* Error */
 	else{
@@ -133,6 +166,8 @@ int main(int argc, char *argv[])
    }
    /* Decrypt */
    else if (strcmp(argv[1], "-d") == 0){ 
+   	op.params[0].tmpref.buffer = plaintext;
+   	op.params[0].tmpref.size = MAX_LEN;
 
         /* Func(1): open, read ciphertext file */
 	fp = fopen(argv[2], "r");
@@ -172,8 +207,8 @@ int main(int argc, char *argv[])
 	memcpy(plaintext, op.params[0].tmpref.buffer, MAX_LEN);
 	printf("------------------------Plaintext-------------------------\n%s\n", plaintext);
 
-	/* Func(5): save plaintext.txt file */
-	fp = fopen("plaintext.txt", "w");
+	/* Func(5): save plain.txt file */
+	fp = fopen("plain.txt", "w");
 	fputs(plaintext, fp);
 	fclose(fp);
    }
