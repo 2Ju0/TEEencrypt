@@ -66,13 +66,11 @@ int main(int argc, char *argv[])
 	errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
 
    res = TEEC_OpenSession(&ctx, &sess, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
-
    if (res != TEEC_SUCCESS)
 	errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x", res, err_origin);
 
    /* Clear the TEEC_Operation struct */
    memset(&op, 0, sizeof(op));
-   
    op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_OUTPUT,		// Caesar 
 					 TEEC_VALUE_INOUT,		// Caesar 
 					 TEEC_MEMREF_TEMP_INPUT, 	// RSA
@@ -107,7 +105,6 @@ int main(int argc, char *argv[])
    		op.params[0].tmpref.size = MAX_LEN;
 
 		/* Func(2): send plaintext file */
-		memcpy(op.params[0].tmpref.buffer, plaintext, MAX_LEN);
 		res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_CMD_ENC, &op, &err_origin);
 
 		if (res != TEEC_SUCCESS)
@@ -166,7 +163,7 @@ int main(int argc, char *argv[])
    }
    /* Decrypt */
    else if (strcmp(argv[1], "-d") == 0){ 
-   	op.params[0].tmpref.buffer = plaintext;
+   	op.params[0].tmpref.buffer = ciphertext;
    	op.params[0].tmpref.size = MAX_LEN;
 
         /* Func(1): open, read ciphertext file */
